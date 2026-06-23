@@ -17,38 +17,29 @@ jobs:
 
   # ---------- Job 1：构建 + 扫描 ----------
   build-and-scan:
-    runs-on: self-hosted          # 用你自己的 VM 上的 Runner
+    runs-on: self-hosted
     steps:
 
       # 步骤 1：拉取代码
       - name: Checkout
         uses: actions/checkout@v4
-        # actions/checkout 是 GitHub 官方 Action，把代码拉到 Runner
 
       # 步骤 2：构建 Docker 镜像
       - name: Build Image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          load: true
-          tags: ${{ secrets.HARBOR_URL }}/demo/${{ env.IMAGE_NAME }}:${{ github.run_number }}
-          push: false
-      - name: Set Image Tag
-        run: echo "IMAGE_TAG=${{ github.run_number }}" >> $GITHUB_ENV
+        run: |
+          IMAGE_TAG=${{ github.run_number }}
+          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+          docker build             -t ${{ secrets.HARBOR_URL }}/demo/${{ env.IMAGE_NAME }}:$IMAGE_TAG             .
 
       # 步骤 3：Trivy 安全扫描
       - name: Security Scan
         run: |
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock             aquasec/trivy image             --severity HIGH,CRITICAL             --exit-code 0             --skip-db-update             ${{ secrets.HARBOR_URL }}/demo/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
-        # --exit-code 0：学习阶段不阻断
-        # --skip-db-update：跳过在线下载DB（内网环境无法访问外部镜像仓库）
-        # 生产环境 --exit-code 1：有高危漏洞就阻断构建
 
       # 步骤 4：单元测试
       - name: Unit Tests
         run: |
           echo "===== 单元测试 ====="
-          echo "生产环境用：go test -v -cover ./..."
           echo "单元测试通过"
 
       # 步骤 5：推送到 Harbor
@@ -56,12 +47,11 @@ jobs:
         run: |
           echo "${{ secrets.HARBOR_PASSWORD }}" |             docker login ${{ secrets.HARBOR_URL }}               -u ${{ secrets.HARBOR_USERNAME }} --password-stdin
           docker push ${{ secrets.HARBOR_URL }}/demo/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
-          echo "镜像已推送：${{ secrets.HARBOR_URL }}/demo/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
-        # --password-stdin：密码通过管道传入，不暴露在命令行参数中
+          echo "镜像已推送"
 
   # ---------- Job 2：部署到 K8s ----------
   deploy:
-    needs: build-and-scan         # 等 Job 1 完成后再跑
+    needs: build-and-scan
     runs-on: self-hosted
     steps:
       - name: Deploy to K8s
