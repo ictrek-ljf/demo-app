@@ -1,0 +1,90 @@
+# ===== Workflow 名称 =====
+name: CI Pipeline
+
+# ===== 触发器 =====
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# ===== Workflow 级环境变量 =====
+env:
+  IMAGE_NAME: demo-app
+
+# ===== Job 定义 =====
+jobs:
+
+  # ---------- Job 1：构建 + 扫描 ----------
+  build-and-scan:
+    runs-on: self-hosted          # 用你自己的 VM 上的 Runner
+    steps:
+
+      # 步骤 1：拉取代码
+      - name: Checkout
+        uses: actions/checkout@v4
+        # actions/checkout 是 GitHub 官方 Action，把代码拉到 Runner
+
+      # 步骤 2：构建 Docker 镜像
+      - name: Build Image
+        run: |
+          docker build \
+            -t ${{ secrets.HARBOR_URL }}/demo/${{ env.IMAGE_NAME }}:${{ github.run_number }} \
+            .
+          echo "IMAGE_TAG=${{ github.run_number }}" >> $GITHUB_ENV
+        # ${{ github.run_number }} 是内置变量，每次运行自动 +1
+        # $GITHUB_ENV 是 GitHub Actions 的环境变量文件
+
+      # 步骤 3：Trivy 安全扫描
+      - name: Security Scan
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy image \
+            --severity HIGH,CRITICAL \
+            --exit-code 0 \
+            ${{ secrets.HARBOR_URL }}/demo/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+        # --exit-code 0：学习阶段不阻断
+        # 生产环境 --exit-code 1：有高危漏洞就阻断构建
+
+      # 步骤 4：单元测试
+      - name: Unit Tests
+        run: |
+          echo "===== 单元测试 ====="
+          echo "生产环境用：go test -v -cover ./..."
+          echo "单元测试通过"
+
+      # 步骤 5：推送到 Harbor
+      - name: Push to Harbor
+        run: |
+          echo "${{ secrets.HARBOR_PASSWORD }}" | \
+            docker login ${{ secrets.HARBOR_URL }} \
+              -u ${{ secrets.HARBOR_USERNAME }} --password-stdin
+          docker push ${{ secrets.HARBOR_URL }}/demo/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          echo "镜像已推送：${{ secrets.HARBOR_URL }}/demo/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+        # --password-stdin：密码通过管道传入，不暴露在命令行参数中
+
+  # ---------- Job 2：部署到 K8s ----------
+  deploy:
+    needs: build-and-scan         # 等 Job 1 完成后再跑
+    runs-on: self-hosted
+    steps:
+      - name: Deploy to K8s
+        run: |
+          kubectl set image deployment/demo-app \
+            demo-app=${{ secrets.HARBOR_URL }}/demo/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} \
+            -n default --record
+          kubectl rollout status deployment/demo-app -n default --timeout=120s
+
+      - name: Smoke Test
+        run: |
+          for i in 1 2 3; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://demo-app-svc.default/health)
+            if [ "$STATUS" = "200" ]; then
+              echo "✅ 冒烟测试通过"
+              exit 0
+            fi
+            echo "重试 $i..."
+            sleep 3
+          done
+          echo "❌ 冒烟测试失败"
+          exit 1
