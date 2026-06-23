@@ -27,13 +27,14 @@ jobs:
 
       # 步骤 2：构建 Docker 镜像
       - name: Build Image
-        run: |
-          docker build \
-            -t ${{ secrets.HARBOR_URL }}/demo/${{ env.IMAGE_NAME }}:${{ github.run_number }} \
-            .
-          echo "IMAGE_TAG=${{ github.run_number }}" >> $GITHUB_ENV
-        # ${{ github.run_number }} 是内置变量，每次运行自动 +1
-        # $GITHUB_ENV 是 GitHub Actions 的环境变量文件
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: ${{ secrets.HARBOR_URL }}/demo/${{ env.IMAGE_NAME }}:${{ github.run_number }}
+          push: false
+      - name: Set Image Tag
+        run: echo "IMAGE_TAG=${{ github.run_number }}" >> $GITHUB_ENV
 
       # 步骤 3：Trivy 安全扫描
       - name: Security Scan
