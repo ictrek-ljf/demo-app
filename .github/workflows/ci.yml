@@ -11,8 +11,6 @@ on:
 # ===== Workflow 级环境变量 =====
 env:
   IMAGE_NAME: demo-app
-  # 默认 HARBOR_URL，会被 Secrets 覆盖
-  HARBOR_URL: ""
 
 # ===== Job 定义 =====
 jobs:
@@ -22,9 +20,12 @@ jobs:
     runs-on: self-hosted
     steps:
 
-      # 步骤 1：拉取代码
+      # 步骤 1：拉取代码（使用 SSH）
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ssh-key: ${{ secrets.DEPLOY_KEY }}
+          ssh-known-hosts: github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
 
       # 步骤 2：构建 Docker 镜像
       - name: Build Image
@@ -69,7 +70,7 @@ jobs:
       - name: Smoke Test
         run: |
           for i in 1 2 3; do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://demo-app-svc.default/health)
+            STATUS=$(curl -s -o /dev/null -w "%{{http_code}}" http://demo-app-svc.default/health)
             if [ "$STATUS" = "200" ]; then
               echo "冒烟测试通过"
               exit 0
