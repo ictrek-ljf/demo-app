@@ -68,30 +68,23 @@ jobs:
       - name: Deploy to K8s
         run: |
           IMAGE_FULL="${{ secrets.HARBOR_URL }}/demo/${{ env.IMAGE_NAME }}:${{ needs.build-and-scan.outputs.image_tag }}"
-          echo "=== Deploy $IMAGE_FULL ===" > /tmp/smoke-debug.log
-          kubectl set image deployment/demo-app demo-app="$IMAGE_FULL" -n default >> /tmp/smoke-debug.log 2>&1
-          kubectl rollout status deployment/demo-app -n default --timeout=120s >> /tmp/smoke-debug.log 2>&1
-          echo "rollout done" >> /tmp/smoke-debug.log
+          kubectl set image deployment/demo-app demo-app="$IMAGE_FULL" -n default
+          kubectl rollout status deployment/demo-app -n default --timeout=120s
 
       - name: Smoke Test
         run: |
-          {
-            echo "=== Smoke Test ==="
-            echo "PATH=$PATH"
-            echo "HOME=$HOME"
-            which curl
-            which kubectl || echo "no kubectl"
-            kubectl get svc demo-app-svc -n default -o wide
-            CLUSTER_IP=$(kubectl get svc demo-app-svc -n default -o jsonpath='{.spec.clusterIP}')
-            echo "CLUSTER_IP=[$CLUSTER_IP] len=${#CLUSTER_IP}"
-            echo "--- curl attempts ---"
-            for i in 1 2 3; do
-              echo "Attempt $i:"
-              curl -v http://$CLUSTER_IP/health 2>&1
-              echo "exit_code=$?"
-              sleep 3
-            done
-          } >> /tmp/smoke-debug.log 2>&1
-          cat /tmp/smoke-debug.log
-          echo "smoke failed"
+          CLUSTER_IP=$(kubectl get svc demo-app-svc -n default -o jsonpath='{.spec.clusterIP}')
+          echo "ClusterIP=$CLUSTER_IP"
+          for i in 1 2 3 4 5; do
+            BODY=$(curl -s http://$CLUSTER_IP/health)
+            CURL_EXIT=$?
+            echo "Attempt $i: body=[$BODY] curl_exit=$CURL_EXIT"
+            if [ "$BODY" = "OK" ] && [ $CURL_EXIT -eq 0 ]; then
+              echo "冒烟测试通过"
+              exit 0
+            fi
+            echo "重试 $i..."
+            sleep 5
+          done
+          echo "冒烟测试失败"
           exit 1
