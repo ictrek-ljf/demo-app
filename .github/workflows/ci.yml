@@ -11,6 +11,8 @@ on:
 # ===== Workflow 级环境变量 =====
 env:
   IMAGE_NAME: demo-app
+  # 默认 HARBOR_URL，会被 Secrets 覆盖
+  HARBOR_URL: ""
 
 # ===== Job 定义 =====
 jobs:
@@ -29,12 +31,15 @@ jobs:
         run: |
           IMAGE_TAG=${{ github.run_number }}
           echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
-          docker build             -t ${{ secrets.HARBOR_URL }}/demo/${{ env.IMAGE_NAME }}:$IMAGE_TAG             .
+          IMAGE_FULL="${{ secrets.HARBOR_URL }}/demo/${{ env.IMAGE_NAME }}:$IMAGE_TAG"
+          echo "Using image: $IMAGE_FULL"
+          docker build -t "$IMAGE_FULL" .
 
       # 步骤 3：Trivy 安全扫描
       - name: Security Scan
         run: |
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock             aquasec/trivy image             --severity HIGH,CRITICAL             --exit-code 0             --skip-db-update             ${{ secrets.HARBOR_URL }}/demo/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          IMAGE_FULL="${{ secrets.HARBOR_URL }}/demo/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock             aquasec/trivy image             --severity HIGH,CRITICAL             --exit-code 0             --skip-db-update             "$IMAGE_FULL"
 
       # 步骤 4：单元测试
       - name: Unit Tests
@@ -45,9 +50,10 @@ jobs:
       # 步骤 5：推送到 Harbor
       - name: Push to Harbor
         run: |
-          echo "${{ secrets.HARBOR_PASSWORD }}" |             docker login ${{ secrets.HARBOR_URL }}               -u ${{ secrets.HARBOR_USERNAME }} --password-stdin
-          docker push ${{ secrets.HARBOR_URL }}/demo/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
-          echo "镜像已推送"
+          IMAGE_FULL="${{ secrets.HARBOR_URL }}/demo/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          echo "${{ secrets.HARBOR_PASSWORD }}" |             docker login "${{ secrets.HARBOR_URL }}"               -u "${{ secrets.HARBOR_USERNAME }}" --password-stdin
+          docker push "$IMAGE_FULL"
+          echo "镜像已推送: $IMAGE_FULL"
 
   # ---------- Job 2：部署到 K8s ----------
   deploy:
@@ -56,7 +62,8 @@ jobs:
     steps:
       - name: Deploy to K8s
         run: |
-          kubectl set image deployment/demo-app             demo-app=${{ secrets.HARBOR_URL }}/demo/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}             -n default --record
+          IMAGE_FULL="${{ secrets.HARBOR_URL }}/demo/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          kubectl set image deployment/demo-app             demo-app="$IMAGE_FULL"             -n default --record
           kubectl rollout status deployment/demo-app -n default --timeout=120s
 
       - name: Smoke Test
