@@ -20,12 +20,13 @@ jobs:
     runs-on: self-hosted
     steps:
 
-      # 步骤 1：拉取代码（使用 SSH）
+      # 步骤 0：配置 git 使用 SSH
+      - name: Setup Git SSH
+        run: git config --global url."git@github.com:".insteadOf "https://github.com/"
+
+      # 步骤 1：拉取代码
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ssh-key: ${{ secrets.DEPLOY_KEY }}
-          ssh-known-hosts: github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
 
       # 步骤 2：构建 Docker 镜像
       - name: Build Image
