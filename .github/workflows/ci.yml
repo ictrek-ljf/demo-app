@@ -37,11 +37,11 @@ jobs:
           echo "Using image: $IMAGE_FULL"
           docker build -t "$IMAGE_FULL" .
 
-      # 步骤 3：Trivy 安全扫描
+      # 步骤 3：Trivy 安全扫描（挂载本地 DB 缓存）
       - name: Security Scan
         run: |
           IMAGE_FULL="${{ secrets.HARBOR_URL }}/demo/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock             aquasec/trivy image             --severity HIGH,CRITICAL             --exit-code 0             --db-repository ghcr.io/aquasecurity/trivy-db             --java-db-repository ghcr.io/aquasecurity/trivy-java-db             "$IMAGE_FULL"
+          docker run --rm             -v /var/run/docker.sock:/var/run/docker.sock             -v /home/ictrek/.trivy-cache:/root/.cache/trivy             aquasec/trivy image             --severity HIGH,CRITICAL             --exit-code 0             --skip-db-update             "$IMAGE_FULL"
 
       # 步骤 4：单元测试
       - name: Unit Tests
