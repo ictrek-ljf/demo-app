@@ -41,7 +41,7 @@ jobs:
       - name: Security Scan
         run: |
           IMAGE_FULL="${{ secrets.HARBOR_URL }}/demo/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock             aquasec/trivy image             --severity HIGH,CRITICAL             --exit-code 0             --skip-db-update             "$IMAGE_FULL"
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock             aquasec/trivy image             --severity HIGH,CRITICAL             --exit-code 0             --db-repository ghcr.io/aquasecurity/trivy-db             --java-db-repository ghcr.io/aquasecurity/trivy-java-db             "$IMAGE_FULL"
 
       # 步骤 4：单元测试
       - name: Unit Tests
