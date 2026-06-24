@@ -18,6 +18,8 @@ jobs:
   # ---------- Job 1：构建 + 扫描 ----------
   build-and-scan:
     runs-on: self-hosted
+    outputs:
+      image_tag: ${{ steps.build.outputs.image_tag }}
     steps:
 
       # 步骤 0：配置 git 使用 SSH
@@ -30,9 +32,10 @@ jobs:
 
       # 步骤 2：构建 Docker 镜像
       - name: Build Image
+        id: build
         run: |
           IMAGE_TAG=${{ github.run_number }}
-          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+          echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
           IMAGE_FULL="${{ secrets.HARBOR_URL }}/demo/${{ env.IMAGE_NAME }}:$IMAGE_TAG"
           echo "Using image: $IMAGE_FULL"
           docker build -t "$IMAGE_FULL" .
@@ -40,7 +43,7 @@ jobs:
       # 步骤 3：Trivy 安全扫描（挂载本地 DB 缓存）
       - name: Security Scan
         run: |
-          IMAGE_FULL="${{ secrets.HARBOR_URL }}/demo/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          IMAGE_FULL="${{ secrets.HARBOR_URL }}/demo/${{ env.IMAGE_NAME }}:${{ steps.build.outputs.image_tag }}"
           docker run --rm             -v /var/run/docker.sock:/var/run/docker.sock             -v /home/ictrek/.trivy-cache:/root/.cache/trivy             aquasec/trivy image             --severity HIGH,CRITICAL             --exit-code 0             --skip-db-update             "$IMAGE_FULL"
 
       # 步骤 4：单元测试
@@ -52,7 +55,7 @@ jobs:
       # 步骤 5：推送到 Harbor
       - name: Push to Harbor
         run: |
-          IMAGE_FULL="${{ secrets.HARBOR_URL }}/demo/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          IMAGE_FULL="${{ secrets.HARBOR_URL }}/demo/${{ env.IMAGE_NAME }}:${{ steps.build.outputs.image_tag }}"
           echo "${{ secrets.HARBOR_PASSWORD }}" |             docker login "${{ secrets.HARBOR_URL }}"               -u "${{ secrets.HARBOR_USERNAME }}" --password-stdin
           docker push "$IMAGE_FULL"
           echo "镜像已推送: $IMAGE_FULL"
@@ -64,7 +67,7 @@ jobs:
     steps:
       - name: Deploy to K8s
         run: |
-          IMAGE_FULL="${{ secrets.HARBOR_URL }}/demo/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          IMAGE_FULL="${{ secrets.HARBOR_URL }}/demo/${{ env.IMAGE_NAME }}:${{ needs.build-and-scan.outputs.image_tag }}"
           kubectl set image deployment/demo-app             demo-app="$IMAGE_FULL"             -n default --record
           kubectl rollout status deployment/demo-app -n default --timeout=120s
 
