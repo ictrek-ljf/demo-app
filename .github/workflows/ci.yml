@@ -68,25 +68,19 @@ jobs:
       - name: Deploy to K8s
         run: |
           IMAGE_FULL="${{ secrets.HARBOR_URL }}/demo/${{ env.IMAGE_NAME }}:${{ needs.build-and-scan.outputs.image_tag }}"
-          kubectl set image deployment/demo-app             demo-app="$IMAGE_FULL"             -n default --record
+          kubectl set image deployment/demo-app demo-app="$IMAGE_FULL" -n default
           kubectl rollout status deployment/demo-app -n default --timeout=120s
+          CLUSTER_IP=$(kubectl get svc demo-app-svc -n default -o jsonpath='{.spec.clusterIP}')
+          echo "CLUSTER_IP=$CLUSTER_IP" >> $GITHUB_ENV
 
       - name: Smoke Test
         run: |
-          echo "=== DEBUG: env ==="
+          echo "=== Smoke Test ==="
+          echo "CLUSTER_IP=$CLUSTER_IP"
           echo "PATH=$PATH"
-          which kubectl && kubectl version --client --short 2>&1 || true
-          echo "--- kubectl get svc ---"
-          kubectl get svc demo-app-svc -n default -o wide 2>&1
-          CLUSTER_IP=$(kubectl get svc demo-app-svc -n default -o jsonpath='{.spec.clusterIP}')
-          echo "ClusterIP=[$CLUSTER_IP] len=${#CLUSTER_IP}"
-          if [ -z "$CLUSTER_IP" ]; then
-            echo "FATAL: CLUSTER_IP empty"
-            exit 1
-          fi
-          echo "--- curl test ---"
+          which curl 2>&1
           for i in 1 2 3; do
-            echo "Attempt $i: curl -v http://$CLUSTER_IP/health 2>&1"
+            echo "Attempt $i: curl http://$CLUSTER_IP/health"
             OUTPUT=$(curl -s -w "\nHTTP_CODE:%{{http_code}}" http://$CLUSTER_IP/health 2>&1)
             CURL_EXIT=$?
             echo "$OUTPUT"
@@ -97,7 +91,7 @@ jobs:
               exit 0
             fi
             echo "重试 $i..."
-            sleep 3
+            sleep 5
           done
           echo "冒烟测试失败"
           exit 1
