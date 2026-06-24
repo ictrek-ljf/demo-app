@@ -73,11 +73,26 @@ jobs:
 
       - name: Smoke Test
         run: |
+          echo "=== DEBUG: env ==="
+          echo "PATH=$PATH"
+          which kubectl && kubectl version --client --short 2>&1 || true
+          echo "--- kubectl get svc ---"
+          kubectl get svc demo-app-svc -n default -o wide 2>&1
           CLUSTER_IP=$(kubectl get svc demo-app-svc -n default -o jsonpath='{.spec.clusterIP}')
-          echo "Service ClusterIP: $CLUSTER_IP"
+          echo "ClusterIP=[$CLUSTER_IP] len=${#CLUSTER_IP}"
+          if [ -z "$CLUSTER_IP" ]; then
+            echo "FATAL: CLUSTER_IP empty"
+            exit 1
+          fi
+          echo "--- curl test ---"
           for i in 1 2 3; do
-            STATUS=$(curl -s -o /dev/null -w "%{{http_code}}" http://$CLUSTER_IP/health)
-            if [ "$STATUS" = "200" ]; then
+            echo "Attempt $i: curl -v http://$CLUSTER_IP/health 2>&1"
+            OUTPUT=$(curl -s -w "\nHTTP_CODE:%{{http_code}}" http://$CLUSTER_IP/health 2>&1)
+            CURL_EXIT=$?
+            echo "$OUTPUT"
+            echo "curl_exit=$CURL_EXIT"
+            HTTP_CODE=$(echo "$OUTPUT" | grep HTTP_CODE | cut -d: -f2)
+            if [ "$HTTP_CODE" = "200" ]; then
               echo "冒烟测试通过"
               exit 0
             fi
