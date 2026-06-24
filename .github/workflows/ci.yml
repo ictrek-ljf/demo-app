@@ -73,8 +73,10 @@ jobs:
 
       - name: Smoke Test
         run: |
+          CLUSTER_IP=$(kubectl get svc demo-app-svc -n default -o jsonpath='{.spec.clusterIP}')
+          echo "Service ClusterIP: $CLUSTER_IP"
           for i in 1 2 3; do
-            STATUS=$(curl -s -o /dev/null -w "%{{http_code}}" http://demo-app-svc.default/health)
+            STATUS=$(curl -s -o /dev/null -w "%{{http_code}}" http://$CLUSTER_IP/health)
             if [ "$STATUS" = "200" ]; then
               echo "冒烟测试通过"
               exit 0
